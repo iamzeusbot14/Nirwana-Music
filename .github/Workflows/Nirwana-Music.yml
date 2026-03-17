@@ -3,17 +3,18 @@ name: Nirwana Music CI/CD
 on:
   push:
     branches: [ "main", "master", "dev" ]
-  pull_request:
-    branches: [ "main" ]
 
 jobs:
-  build:
-    name: Build and Deploy
+  build_and_cleanup:
+    name: Build, Deploy and Purge
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout Private Repository
         uses: actions/checkout@v4
+        with:
+          # This uses the bot's permissions already granted to the repo
+          persist-credentials: false 
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -25,32 +26,35 @@ jobs:
       - name: Grant Execute Permission
         run: chmod +x gradlew
 
-      - name: Build with Gradle
-        # 'tee' saves the log to a file while still showing it in the console
-        # '2>&1' captures both standard output and error messages
+      - name: Build Music App
+        # Capturing logs for potential failure
         run: ./gradlew assembleDebug --stacktrace 2>&1 | tee build_log.txt
 
-      - name: Send APK on Success
+      - name: Send APK to Telegram on Success
         if: success()
         run: |
-          # Locate the generated APK
           APK_PATH=$(find app/build/outputs/apk/debug/ -name "*.apk" | head -n 1)
-          
           curl -F document=@"$APK_PATH" \
           "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
           -F chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
-          -F caption="🎵 *Nirwana Music: Build Successful!*%0A%0A📌 *Commit:* ${{ github.event.head_commit.message }}%0A👤 *Author:* ${{ github.actor }}" \
+          -F caption="🎵 *Nirwana Music: Build Ready!*%0A%0A📌 *Commit:* ${{ github.event.head_commit.message }}" \
           -F parse_mode="Markdown"
 
       - name: Send Error Log on Failure
         if: failure()
         run: |
-          # Extracts the last 200 lines to keep the file relevant and lightweight
           tail -n 200 build_log.txt > error_log.txt
-          
           curl -F document=@"error_log.txt" \
           "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
           -F chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
-          -F caption="❌ *Nirwana Music: Build Failed*%0A%0AThe compilation encountered an error. See the attached log for details." \
+          -F caption="❌ *Build Failed*%0AAttached: error_log.txt" \
           -F parse_mode="Markdown"
-          
+
+      - name: Purge All Artifacts
+        # This runs whether the build succeeds or fails (always)
+        if: always()
+        run: |
+          echo "🧹 Cleaning up workspace..."
+          rm -rf app/build/
+          rm -f build_log.txt error_log.txt
+          echo "✅ All local artifacts deleted from runner."
