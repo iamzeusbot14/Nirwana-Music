@@ -5,6 +5,10 @@ on:
     branches: [ "1.0.1" ]
   workflow_dispatch:
 
+env:
+  # Sets the entire runner to Indian Standard Time
+  TZ: Asia/Kolkata
+
 jobs:
   build_and_cleanup:
     name: Build and Purge
@@ -26,9 +30,10 @@ jobs:
           echo "COMMIT_MSG=$(git log -1 --pretty=%B | head -n 1)" >> $GITHUB_ENV
           echo "START_TIME=$(date +%s)" >> $GITHUB_ENV
 
-      # 3. Send Trigger Notification (Bold Headers + Monospace Values)
+      # 3. Send Trigger Notification (IST Time)
       - name: Send Trigger Notification
         run: |
+          # The date command now follows the TZ env set above
           TIME=$(date +"%a %b %d %I:%M:%S %p")
           
           CAPTION=$(printf "<b>Build Triggered ⌛</b>\n<b>App : </b><code>Nirwana Music</code>\n<b>Support : </b><code>Android 16.0</code>\n<b>Variant : </b><code>Released</code>\n<b>Machine : </b><code>Ubuntu 24.04.3 LTS</code>\n<b>Cores : </b><code>4</code>\n<b>Time : </b><code>$TIME</code>\n<b>Top Commit : </b>${{ env.COMMIT_SHA }} <code>${{ env.COMMIT_MSG }}</code>")
