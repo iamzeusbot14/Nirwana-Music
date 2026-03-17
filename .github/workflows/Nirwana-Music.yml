@@ -11,71 +11,86 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 1. Setup Environment
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
+      # 2. Private Clone using your REPO_ACCESS_TOKEN
       - name: Clone Nirwana-Music
         run: |
           git clone --depth 1 --branch 1.0.1 https://${{ secrets.REPO_ACCESS_TOKEN }}@github.com/iamzeus14/Nirwana-Music.git .
 
+      # 3. Send Trigger Notification (Bold Headers & Monospace Values)
       - name: Send Trigger Notification
         run: |
           COMMIT_HASH=$(git rev-parse --short HEAD)
           COMMIT_MSG=$(git log -1 --pretty=%B | head -n 1)
           TIME=$(date +"%a %b %d %I:%M:%S %p")
           
-          # We use HTML to specifically bold the headers and the first part of the values
           MESSAGE="<b>Build Triggered ⌛</b>%0A"
           MESSAGE+="<b>App : </b><code>Nirwana Music</code>%0A"
           MESSAGE+="<b>Support : </b><code>Android 14.0+</code>%0A"
-          MESSAGE+="<b>Variant : </b><code>Debug Stable</code>%0A"
+          MESSAGE+="<b>Variant : </b><code>GKI Stable</code>%0A"
           MESSAGE+="<b>Machine : </b><code>Ubuntu 24.04.3 LTS</code>%0A"
           MESSAGE+="<b>Cores : </b><code>4</code>%0A"
           MESSAGE+="<b>Time : </b><code>$TIME</code>%0A"
-          MESSAGE+="<b>Top Commit : </b><code>$COMMIT_HASH $COMMIT_MSG</code>"
+          MESSAGE+="<b>Top Commit : </b><b>$COMMIT_HASH</b> <code>$COMMIT_MSG</code>"
 
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
           -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
           -d text="$MESSAGE" \
           -d parse_mode="HTML"
 
+      # 4. Prepare Gradle Wrapper
       - name: Prepare Gradle
         run: |
           if [ ! -f gradlew ]; then gradle wrapper; fi
           chmod +x gradlew
 
+      # 5. Build the Music App
       - name: Build APK
         run: ./gradlew assembleDebug --stacktrace 2>&1 | tee build_log.txt
 
+      # 6. Upload Large APK & Send Link
       - name: Upload and Send Link to Telegram
         if: success()
         run: |
           APK_PATH=$(find . -name "*.apk" | grep "debug" | head -n 1)
           APK_NAME=$(basename "$APK_PATH")
           
-          # Uploading to transfer.sh for large file support
+          # Uploading to transfer.sh because APK is 86.5MB (Telegram limit is 50MB)
           DOWNLOAD_URL=$(curl --upload-file "$APK_PATH" "https://transfer.sh/$APK_NAME")
           
+          MESSAGE="<b>Build Completed ✅</b>%0A%0A"
+          MESSAGE+="<b>App : </b><code>Nirwana Music</code>%0A"
+          MESSAGE+="<b>File : </b><code>$APK_NAME</code>%0A"
+          MESSAGE+="<b>Size : </b><code>86.5 MB</code>%0A"
+          MESSAGE+="<b>Variant : </b><code>GKI Stable</code>%0A%0A"
+          MESSAGE+="<b>Download Link : </b>%0A$DOWNLOAD_URL"
+
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
           -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
-          -d text="✅ <b>Build Completed</b>%0A%0A📦 <b>File:</b> <code>$APK_NAME</code>%0A🔗 <b>Download:</b> $DOWNLOAD_URL" \
+          -d text="$MESSAGE" \
           -d parse_mode="HTML"
 
+      # 7. Error Notification
       - name: Send Error Log on Failure
         if: failure()
         run: |
-          [ -f build_log.txt ] && tail -n 200 build_log.txt > error_log.txt || echo "Failed" > error_log.txt
+          [ -f build_log.txt ] && tail -n 200 build_log.txt > error_log.txt || echo "Build failed early." > error_log.txt
           curl -F document=@"error_log.txt" \
           "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
           -F chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
           -F caption="❌ <b>Build Failed on 1.0.1</b>" \
           -F parse_mode="HTML"
 
+      # 8. Final Purge
       - name: Purge Workspace
         if: always()
         run: |
           rm -rf ./*
           rm -rf .git
+          echo "✅ Runner wiped."
