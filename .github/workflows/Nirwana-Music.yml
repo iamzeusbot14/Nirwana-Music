@@ -24,8 +24,13 @@ jobs:
 
       # 2. Private Clone & Metadata Extraction
       - name: Clone Nirwana-Music
+        env:
+          REPO_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
         run: |
-          git clone --depth 1 --branch 1.0.1 https://${{ secrets.REPO_ACCESS_TOKEN }}@github.com/iamzeus14/Nirwana-Music.git .
+          # Use x-access-token to prevent interactive password prompts
+          git clone --depth 1 --branch 1.0.1 https://x-access-token:${REPO_TOKEN}@github.com/iamzeus14/Nirwana-Music.git .
+          
+          # Exporting to $GITHUB_ENV makes them available in subsequent steps via ${{ env.VAR }}
           echo "COMMIT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
           echo "COMMIT_MSG=$(git log -1 --pretty=%B | head -n 1)" >> $GITHUB_ENV
           echo "START_TIME=$(date +%s)" >> $GITHUB_ENV
@@ -35,7 +40,8 @@ jobs:
         run: |
           TIME=$(date +"%a %b %d %I:%M:%S %p")
           
-          CAPTION=$(printf "<b>Build Triggered ⌛</b>\n<b>App : </b><code>Nirwana Music</code>\n<b>Support : </b><code>Android 16.0</code>\n<b>Variant : </b><code>Released</code>\n<b>Machine : </b><code>Ubuntu 24.04.3 LTS</code>\n<b>Cores : </b><code>4</code>\n<b>Time : </b><code>$TIME</code>\n<b>Top Commit : </b>${{ env.COMMIT_SHA }} <code>${{ env.COMMIT_MSG }}</code>")
+          # Using the ${{ env }} context to access the variables set in the previous step
+          CAPTION=$(printf "<b>Build Triggered ⌛</b>\n<b>App : </b><code>Nirwana Music</code>\n<b>Support : </b><code>Android 16.0</code>\n<b>Variant : </b><code>Release</code>\n<b>Machine : </b><code>Ubuntu 24.04.3 LTS</code>\n<b>Time : </b><code>$TIME</code>\n<b>Top Commit : </b><code>${{ env.COMMIT_SHA }}</code>\n<b>Msg : </b><code>${{ env.COMMIT_MSG }}</code>")
 
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
           -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
@@ -60,19 +66,17 @@ jobs:
           APK_NAME=$(basename "$APK_PATH")
           
           echo "🌐 Fetching GoFile server..."
-          # Fix: Extracting the first available server name from the list
           SERVER=$(curl -s https://api.gofile.io/servers | jq -r '.data.servers[0].name // "store1"')
 
           echo "📤 Uploading $APK_NAME to $SERVER..."
-          # Fix: Standard 2026 upload path
           UPLOAD_RESPONSE=$(curl -F "file=@$APK_PATH" "https://$SERVER.gofile.io/contents/uploadfile")
           DOWNLOAD_URL=$(echo $UPLOAD_RESPONSE | jq -r '.data.downloadPage // "Upload Error"')
           
           NOW=$(date +%s)
-          # Use the environment variable to avoid hardcoded Unix timestamps
+          # Calculate duration using the START_TIME from Step 2
           DIFF=$(( NOW - ${{ env.START_TIME }} ))
           
-          CAPTION=$(printf "<b>Build Completed ✅</b>\n\n<b>App : </b><code>Nirwana Music</code>\n<b>File : </b><code>$APK_NAME</code>\n<b>Size : </b><code>86.5 MB</code>\n<b>Duration : </b><code>$(( DIFF / 60 ))m $(( DIFF % 60 ))s</code>\n\n<b>Download Link : </b>\n$DOWNLOAD_URL")
+          CAPTION=$(printf "<b>Build Completed ✅</b>\n\n<b>App : </b><code>Nirwana Music</code>\n<b>File : </b><code>$APK_NAME</code>\n<b>Duration : </b><code>$(( DIFF / 60 ))m $(( DIFF % 60 ))s</code>\n\n<b>Download Link : </b>\n$DOWNLOAD_URL")
 
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
           -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
@@ -85,7 +89,7 @@ jobs:
         run: |
           [ -f build_log.txt ] && tail -n 200 build_log.txt > error_trace.txt || echo "Build failed." > error_trace.txt
           
-          CAPTION=$(printf "<b>Nirwana Music Build Failed</b>\n\n<b>Commit:</b> <code>${{ env.COMMIT_SHA }}</code>\n<i>Last 200 log lines attached</i>")
+          CAPTION=$(printf "<b>Nirwana Music Build Failed ❌</b>\n\n<b>Commit:</b> <code>${{ env.COMMIT_SHA }}</code>\n<i>Last 200 log lines attached</i>")
 
           curl -F chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
                -F document=@"error_trace.txt" \
