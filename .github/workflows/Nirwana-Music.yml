@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 env:
-  # Sets the entire runner to Indian Standard Time
+  # Sets the entire runner to Indian Standard Time (IST)
   TZ: Asia/Kolkata
 
 jobs:
@@ -30,10 +30,9 @@ jobs:
           echo "COMMIT_MSG=$(git log -1 --pretty=%B | head -n 1)" >> $GITHUB_ENV
           echo "START_TIME=$(date +%s)" >> $GITHUB_ENV
 
-      # 3. Send Trigger Notification (IST Time)
+      # 3. Send Trigger Notification
       - name: Send Trigger Notification
         run: |
-          # The date command now follows the TZ env set above
           TIME=$(date +"%a %b %d %I:%M:%S %p")
           
           CAPTION=$(printf "<b>Build Triggered ⌛</b>\n<b>App : </b><code>Nirwana Music</code>\n<b>Support : </b><code>Android 16.0</code>\n<b>Variant : </b><code>Released</code>\n<b>Machine : </b><code>Ubuntu 24.04.3 LTS</code>\n<b>Cores : </b><code>4</code>\n<b>Time : </b><code>$TIME</code>\n<b>Top Commit : </b>${{ env.COMMIT_SHA }} <code>${{ env.COMMIT_MSG }}</code>")
@@ -53,19 +52,24 @@ jobs:
       - name: Build APK
         run: ./gradlew assembleDebug --stacktrace 2>&1 | tee build_log.txt
 
-      # 6. Handle Success (Upload to GoFile)
+      # 6. Handle Success (Robust GoFile Upload)
       - name: Handle Success
         if: success()
         run: |
           APK_PATH=$(find . -name "*.apk" | grep "debug" | head -n 1)
           APK_NAME=$(basename "$APK_PATH")
           
-          # GoFile Upload Logic
-          SERVER=$(curl -s https://api.gofile.io/getServer | jq -r '.data.server')
-          UPLOAD_RESPONSE=$(curl -F "file=@$APK_PATH" "https://$SERVER.gofile.io/uploadFile")
-          DOWNLOAD_URL=$(echo $UPLOAD_RESPONSE | jq -r '.data.downloadPage')
+          echo "🌐 Fetching GoFile server..."
+          # Fix: Extracting the first available server name from the list
+          SERVER=$(curl -s https://api.gofile.io/servers | jq -r '.data.servers[0].name // "store1"')
+
+          echo "📤 Uploading $APK_NAME to $SERVER..."
+          # Fix: Standard 2026 upload path
+          UPLOAD_RESPONSE=$(curl -F "file=@$APK_PATH" "https://$SERVER.gofile.io/contents/uploadfile")
+          DOWNLOAD_URL=$(echo $UPLOAD_RESPONSE | jq -r '.data.downloadPage // "Upload Error"')
           
           NOW=$(date +%s)
+          # Use the environment variable to avoid hardcoded Unix timestamps
           DIFF=$(( NOW - ${{ env.START_TIME }} ))
           
           CAPTION=$(printf "<b>Build Completed ✅</b>\n\n<b>App : </b><code>Nirwana Music</code>\n<b>File : </b><code>$APK_NAME</code>\n<b>Size : </b><code>86.5 MB</code>\n<b>Duration : </b><code>$(( DIFF / 60 ))m $(( DIFF % 60 ))s</code>\n\n<b>Download Link : </b>\n$DOWNLOAD_URL")
@@ -89,7 +93,7 @@ jobs:
                -F caption="$CAPTION" \
                "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument"
 
-      # 8. Final Purge
+      # 8. Final Cleanup
       - name: Purge Workspace
         if: always()
         run: |
