@@ -7,39 +7,38 @@ on:
 
 jobs:
   build_and_cleanup:
-    name: Build and Purge
+    name: Clone, Build, and Purge
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
+      # 1. Environment Setup
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Find or Generate Gradle Wrapper
+      # 2. Manual Clone of the Private Repo
+      - name: Clone Nirwana-Music
         run: |
-          # Try to find existing gradlew
-          GRADLEW_PATH=$(find . -name "gradlew" | head -n 1)
-          
-          if [ -z "$GRADLEW_PATH" ]; then
-            echo "⚠️ gradlew not found. Generating a fresh one..."
-            gradle wrapper
-            GRADLEW_PATH="./gradlew"
-          fi
-          
-          echo "GRADLEW_DIR=$(dirname "$GRADLEW_PATH")" >> $GITHUB_ENV
-          chmod +x "$GRADLEW_PATH"
-          echo "✅ Gradle ready at: $GRADLEW_PATH"
+          git clone --depth 1 --branch 1.0.1 https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/iamzeus14/Nirwana-Music.git .
+          echo "✅ Repository cloned successfully."
 
-      - name: Build Music App
+      # 3. Handle Gradle Wrapper (Generates it if missing)
+      - name: Prepare Gradle
         run: |
-          cd ${{ env.GRADLEW_DIR }}
+          if [ ! -f gradlew ]; then
+            echo "⚠️ gradlew not found in repo. Generating..."
+            gradle wrapper
+          fi
+          chmod +x gradlew
+
+      # 4. Build the Music App
+      - name: Build APK
+        run: |
           ./gradlew assembleDebug --stacktrace 2>&1 | tee build_log.txt
 
+      # 5. Send APK to Telegram
       - name: Send APK to Telegram
         if: success()
         run: |
@@ -47,23 +46,24 @@ jobs:
           curl -F document=@"$APK_PATH" \
           "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
           -F chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
-          -F caption="🎵 *Nirwana Music Ready!*%0A📌 *Branch:* 1.0.1" \
+          -F caption="🎵 *Nirwana Music Build Success!*%0A📌 *Branch:* 1.0.1%0A👤 *By:* ${{ github.actor }}" \
           -F parse_mode="Markdown"
 
+      # 6. Send Error Log on Failure
       - name: Send Error Log
         if: failure()
         run: |
-          LOG_FILE=$(find . -name "build_log.txt" | head -n 1)
-          [ -f "$LOG_FILE" ] && tail -n 200 "$LOG_FILE" > error_log.txt || echo "No log found" > error_log.txt
+          [ -f build_log.txt ] && tail -n 200 build_log.txt > error_log.txt || echo "Clone or Build failed before logs were written." > error_log.txt
           curl -F document=@"error_log.txt" \
           "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
           -F chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
-          -F caption="❌ *Build Failed on 1.0.1*" \
+          -F caption="❌ *Nirwana Music: Build Failed*%0ACheck the attached logs for errors." \
           -F parse_mode="Markdown"
 
-      - name: Final Workspace Purge
+      # 7. Final Purge (Delete all files from runner)
+      - name: Purge Workspace
         if: always()
         run: |
-          rm -rf app/build/
-          rm -f build_log.txt error_log.txt
-          echo "✅ Workspace cleared."
+          rm -rf ./*
+          rm -rf .git
+          echo "✅ All artifacts and code deleted from runner."
