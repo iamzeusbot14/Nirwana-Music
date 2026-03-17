@@ -18,17 +18,18 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # 2. Manual Clone of the Private Repo
+      # 2. Manual Clone using your REPO_ACCESS_TOKEN
       - name: Clone Nirwana-Music
         run: |
-          git clone --depth 1 --branch 1.0.1 https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/iamzeus14/Nirwana-Music.git .
+          # We use the token in the URL to authenticate the private clone
+          git clone --depth 1 --branch 1.0.1 https://${{ secrets.REPO_ACCESS_TOKEN }}@github.com/iamzeus14/Nirwana-Music.git .
           echo "✅ Repository cloned successfully."
 
-      # 3. Handle Gradle Wrapper (Generates it if missing)
+      # 3. Handle Gradle Wrapper (Ensures gradlew exists)
       - name: Prepare Gradle
         run: |
           if [ ! -f gradlew ]; then
-            echo "⚠️ gradlew not found in repo. Generating..."
+            echo "⚠️ gradlew not found. Generating..."
             gradle wrapper
           fi
           chmod +x gradlew
@@ -42,11 +43,12 @@ jobs:
       - name: Send APK to Telegram
         if: success()
         run: |
+          # Locates the APK anywhere in the build outputs
           APK_PATH=$(find . -name "*.apk" | grep "debug" | head -n 1)
           curl -F document=@"$APK_PATH" \
           "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
           -F chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
-          -F caption="🎵 *Nirwana Music Build Success!*%0A📌 *Branch:* 1.0.1%0A👤 *By:* ${{ github.actor }}" \
+          -F caption="🎵 *Nirwana Music: Build Ready!*%0A📌 *Branch:* 1.0.1%0A👤 *By:* Z E U S" \
           -F parse_mode="Markdown"
 
       # 6. Send Error Log on Failure
@@ -57,13 +59,14 @@ jobs:
           curl -F document=@"error_log.txt" \
           "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
           -F chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
-          -F caption="❌ *Nirwana Music: Build Failed*%0ACheck the attached logs for errors." \
+          -F caption="❌ *Nirwana Music: Build Failed*%0ACheck the attached log for details." \
           -F parse_mode="Markdown"
 
-      # 7. Final Purge (Delete all files from runner)
+      # 7. Final Purge (Zero Footprint)
       - name: Purge Workspace
         if: always()
         run: |
+          # Deletes everything including the hidden .git folder
           rm -rf ./*
           rm -rf .git
-          echo "✅ All artifacts and code deleted from runner."
+          echo "✅ Runner workspace and artifacts completely purged."
