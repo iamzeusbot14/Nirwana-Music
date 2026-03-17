@@ -2,55 +2,55 @@ name: Nirwana Music CI/CD
 
 on:
   push:
-      branches: [ "main", "master", "dev" ]
+    branches: [ "main", "master", "dev" ]
+  # This adds the Manual Trigger button
+  workflow_dispatch:
 
-      jobs:
-        build_and_cleanup:
-            name: Build, Deploy and Purge
-                runs-on: ubuntu-latest
+jobs:
+  build_and_cleanup:
+    name: Build, Deploy and Purge
+    runs-on: ubuntu-latest
 
-                    steps:
-                          - name: Checkout Private Repository
-                                  uses: actions/checkout@v4
+    steps:
+      - name: Checkout Private Repository
+        uses: actions/checkout@v4
 
-                                        - name: Set up JDK 17
-                                                uses: actions/setup-java@v4
-                                                        with:
-                                                                  java-version: '17'
-                                                                            distribution: 'temurin'
-                                                                                      cache: gradle
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
 
-                                                                                            - name: Grant Execute Permission
-                                                                                                    run: chmod +x gradlew
+      - name: Grant Execute Permission
+        run: chmod +x gradlew
 
-                                                                                                          - name: Build Music App
-                                                                                                                  # Captures both output and errors into build_log.txt
-                                                                                                                          run: ./gradlew assembleDebug --stacktrace 2>&1 | tee build_log.txt
+      - name: Build Music App
+        run: ./gradlew assembleDebug --stacktrace 2>&1 | tee build_log.txt
 
-                                                                                                                                - name: Send APK to Telegram on Success
-                                                                                                                                        if: success()
-                                                                                                                                                run: |
-                                                                                                                                                          APK_PATH=$(find app/build/outputs/apk/debug/ -name "*.apk" | head -n 1)
-                                                                                                                                                                    curl -F document=@"$APK_PATH" \
-                                                                                                                                                                              "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
-                                                                                                                                                                                        -F chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
-                                                                                                                                                                                                  -F caption="🎵 *Nirwana Music: Build Ready!*%0A%0A📌 *Commit:* ${{ github.event.head_commit.message }}" \
-                                                                                                                                                                                                            -F parse_mode="Markdown"
+      - name: Send APK to Telegram on Success
+        if: success()
+        run: |
+          APK_PATH=$(find app/build/outputs/apk/debug/ -name "*.apk" | head -n 1)
+          curl -F document=@"$APK_PATH" \
+          "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
+          -F chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+          -F caption="🎵 *Nirwana Music: Build Ready!*%0A%0A📌 *Trigger:* Manual/Push%0A👤 *By:* ${{ github.actor }}" \
+          -F parse_mode="Markdown"
 
-                                                                                                                                                                                                                  - name: Send Error Log on Failure
-                                                                                                                                                                                                                          if: failure()
-                                                                                                                                                                                                                                  run: |
-                                                                                                                                                                                                                                            tail -n 200 build_log.txt > error_log.txt
-                                                                                                                                                                                                                                                      curl -F document=@"error_log.txt" \
-                                                                                                                                                                                                                                                                "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
-                                                                                                                                                                                                                                                                          -F chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
-                                                                                                                                                                                                                                                                                    -F caption="❌ *Build Failed*%0AThe logs are attached below." \
-                                                                                                                                                                                                                                                                                              -F parse_mode="Markdown"
+      - name: Send Error Log on Failure
+        if: failure()
+        run: |
+          tail -n 200 build_log.txt > error_log.txt
+          curl -F document=@"error_log.txt" \
+          "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
+          -F chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+          -F caption="❌ *Build Failed*%0AThe logs are attached below." \
+          -F parse_mode="Markdown"
 
-                                                                                                                                                                                                                                                                                                    - name: Purge All Artifacts
-                                                                                                                                                                                                                                                                                                            if: always()
-                                                                                                                                                                                                                                                                                                                    run: |
-                                                                                                                                                                                                                                                                                                                              rm -rf app/build/
-                                                                                                                                                                                                                                                                                                                                        rm -f build_log.txt error_log.txt
-                                                                                                                                                                                                                                                                                                                                                  echo "✅ Runner workspace cleared."
-                                                                                                                                                                                                                                                                                                                                                  
+      - name: Purge All Artifacts
+        if: always()
+        run: |
+          rm -rf app/build/
+          rm -f build_log.txt error_log.txt
+          echo "✅ Runner workspace cleared."
