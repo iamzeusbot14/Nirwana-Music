@@ -1,20 +1,22 @@
+
 name: Nirwana Music CI/CD
 
 on:
   push:
     branches: [ "1.0.1" ]
-  workflow_dispatch: # Allows you to still click the "Run" button manually
+  workflow_dispatch:
 
 jobs:
   build_and_cleanup:
-    name: Build, Deploy and Purge
+    name: Build and Purge
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+
+      - name: List Files (Debug)
+        run: ls -R  # This helps us see where gradlew is if it fails
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -24,10 +26,9 @@ jobs:
 
       - name: Find and Prepare Gradle
         run: |
-          # Automatically find gradlew in root or subfolders
           GRADLEW_PATH=$(find . -name "gradlew" | head -n 1)
           if [ -z "$GRADLEW_PATH" ]; then
-            echo "❌ ERROR: gradlew not found! Ensure it is committed to branch 1.0.1"
+            echo "❌ ERROR: gradlew still not found! Check the List Files step above."
             exit 1
           fi
           echo "GRADLEW_DIR=$(dirname "$GRADLEW_PATH")" >> $GITHUB_ENV
@@ -39,39 +40,29 @@ jobs:
           cd ${{ env.GRADLEW_DIR }}
           ./gradlew assembleDebug --stacktrace 2>&1 | tee build_log.txt
 
-      - name: Send APK to Telegram on Success
+      - name: Send APK to Telegram
         if: success()
         run: |
-          # Find the generated APK
           APK_PATH=$(find . -name "*.apk" | grep "debug" | head -n 1)
-          
           curl -F document=@"$APK_PATH" \
           "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
           -F chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
-          -F caption="🎵 *Nirwana Music: Build Ready!*%0A%0A📌 *Branch:* 1.0.1%0A👤 *By:* ${{ github.actor }}" \
+          -F caption="🎵 *Nirwana Music Ready!*%0A📌 *Branch:* 1.0.1" \
           -F parse_mode="Markdown"
 
-      - name: Send Error Log on Failure
+      - name: Send Error Log
         if: failure()
         run: |
-          # Capture build log if it exists
           LOG_FILE=$(find . -name "build_log.txt" | head -n 1)
-          if [ -f "$LOG_FILE" ]; then
-            tail -n 200 "$LOG_FILE" > error_log.txt
-          else
-            echo "Build crashed before logs could be written." > error_log.txt
-          fi
-          
+          [ -f "$LOG_FILE" ] && tail -n 200 "$LOG_FILE" > error_log.txt || echo "No log found" > error_log.txt
           curl -F document=@"error_log.txt" \
           "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
           -F chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
-          -F caption="❌ *Build Failed on 1.0.1*%0ACheck the attached log." \
+          -F caption="❌ *Build Failed on 1.0.1*" \
           -F parse_mode="Markdown"
 
-      - name: Purge All Artifacts
+      - name: Purge
         if: always()
         run: |
           find . -name "build_log.txt" -delete
           find . -name "error_log.txt" -delete
-          # GitHub automatically wipes the VM, but this is an extra layer of privacy
-          echo "✅ Workspace purged."
