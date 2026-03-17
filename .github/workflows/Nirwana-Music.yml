@@ -31,7 +31,8 @@ jobs:
         run: |
           TIME=$(date +"%a %b %d %I:%M:%S %p")
           
-          CAPTION=$(printf "<b>Build Triggered ⌛</b>\n<b>App : </b><code>Nirwana Music</code>\n<b>Support : </b><code>Android 16.0</code>\n<b>Variant : </b><code>Released</code>\n<b>Machine : </b><code>Ubuntu 24.04.3 LTS</code>\n<b>Cores : </b><code>4</code>\n<b>Time : </b><code>$TIME</code>\n<b>Top Commit : </b>${{ env.COMMIT_SHA }} <code>${{ env.COMMIT_MSG }}</code>")
+          # We wrap everything in <pre> to force the Monospace (JetBrains style) font
+          CAPTION=$(printf "<code>Build Triggered ⌛\nApp     : Nirwana Music\nSupport : Android 16.0\nVariant : Released\nMachine : Ubuntu 24.04.3 LTS\nCores   : 4\nTime    : $TIME\nCommit  : ${{ env.COMMIT_SHA }} ${{ env.COMMIT_MSG }}</code>")
 
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
           -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
@@ -48,25 +49,22 @@ jobs:
       - name: Build APK
         run: ./gradlew assembleDebug --stacktrace 2>&1 | tee build_log.txt
 
-      # 6. Handle Success (Upload to GoFile)
+      # 6. Handle Success (GoFile Upload)
       - name: Handle Success
         if: success()
         run: |
           APK_PATH=$(find . -name "*.apk" | grep "debug" | head -n 1)
           APK_NAME=$(basename "$APK_PATH")
           
-          # GoFile API Flow: 1. Get Server -> 2. Upload
-          echo "🌐 Fetching GoFile server..."
+          # Fetching GoFile server for upload
           SERVER=$(curl -s https://api.gofile.io/getServer | jq -r '.data.server')
-          
-          echo "📤 Uploading to $SERVER..."
           UPLOAD_RESPONSE=$(curl -F "file=@$APK_PATH" "https://$SERVER.gofile.io/uploadFile")
           DOWNLOAD_URL=$(echo $UPLOAD_RESPONSE | jq -r '.data.downloadPage')
           
           NOW=$(date +%s)
           DIFF=$(( NOW - ${{ env.START_TIME }} ))
           
-          CAPTION=$(printf "<b>Build Completed ✅</b>\n\n<b>App : </b><code>Nirwana Music</code>\n<b>File : </b><code>$APK_NAME</code>\n<b>Size : </b><code>86.5 MB</code>\n<b>Duration : </b><code>$(( DIFF / 60 ))m $(( DIFF % 60 ))s</code>\n\n<b>Download Link : </b>\n$DOWNLOAD_URL")
+          CAPTION=$(printf "<code>Build Completed ✅\n\nApp      : Nirwana Music\nFile     : $APK_NAME\nSize     : 86.5 MB\nDuration : $(( DIFF / 60 ))m $(( DIFF % 60 ))s\nVariant  : Released\n\nDownload Link :\n$DOWNLOAD_URL</code>")
 
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
           -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
@@ -77,7 +75,7 @@ jobs:
       - name: Handle Failure
         if: failure()
         run: |
-          [ -f build_log.txt ] && tail -n 200 build_log.txt > error_trace.txt || echo "Build failed early." > error_trace.txt
+          [ -f build_log.txt ] && tail -n 200 build_log.txt > error_trace.txt || echo "Build failed." > error_trace.txt
           
           CAPTION=$(printf "<b>Nirwana Music Build Failed</b>\n\n<b>Commit:</b> <code>${{ env.COMMIT_SHA }}</code>\n<i>Last 200 log lines attached</i>")
 
@@ -87,7 +85,7 @@ jobs:
                -F caption="$CAPTION" \
                "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument"
 
-      # 8. Cleanup
+      # 8. Final Purge
       - name: Purge Workspace
         if: always()
         run: |
