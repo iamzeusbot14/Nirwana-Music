@@ -7,7 +7,7 @@ on:
 
 jobs:
   build_and_cleanup:
-    name: Build and Deliver
+    name: Build and Purge
     runs-on: ubuntu-latest
 
     steps:
@@ -21,25 +21,26 @@ jobs:
         run: |
           git clone --depth 1 --branch 1.0.1 https://${{ secrets.REPO_ACCESS_TOKEN }}@github.com/iamzeus14/Nirwana-Music.git .
 
-      # NEW: Build Triggered Notification
       - name: Send Trigger Notification
         run: |
           COMMIT_HASH=$(git rev-parse --short HEAD)
           COMMIT_MSG=$(git log -1 --pretty=%B | head -n 1)
           TIME=$(date +"%a %b %d %I:%M:%S %p")
           
-          MESSAGE="Build Triggered ⌛%0A"
+          # We use HTML parsing mode for the cleanest "Code" font block
+          MESSAGE="<code>Build Triggered ⌛%0A"
           MESSAGE+="App : Nirwana Music%0A"
           MESSAGE+="Support : Android 14.0+%0A"
           MESSAGE+="Variant : Debug Stable%0A"
-          MESSAGE+="Machine : Ubuntu 24.04 LTS%0A"
+          MESSAGE+="Machine : Ubuntu 24.04.3 LTS%0A"
           MESSAGE+="Cores : 4%0A"
           MESSAGE+="Time : $TIME%0A"
-          MESSAGE+="Top Commit : $COMMIT_HASH $COMMIT_MSG"
+          MESSAGE+="Top Commit : $COMMIT_HASH $COMMIT_MSG</code>"
 
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
           -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
-          -d text="$MESSAGE"
+          -d text="$MESSAGE" \
+          -d parse_mode="HTML"
 
       - name: Prepare Gradle
         run: |
@@ -55,23 +56,23 @@ jobs:
           APK_PATH=$(find . -name "*.apk" | grep "debug" | head -n 1)
           APK_NAME=$(basename "$APK_PATH")
           
-          # Upload to transfer.sh to bypass the 50MB Telegram limit
+          # Uploading to transfer.sh to handle the 86MB file size
           DOWNLOAD_URL=$(curl --upload-file "$APK_PATH" "https://transfer.sh/$APK_NAME")
           
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
           -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
-          -d text="✅ *Build Completed*%0A%0A📦 *File:* $APK_NAME%0A🔗 *Download:* $DOWNLOAD_URL" \
-          -d parse_mode="Markdown"
+          -d text="✅ <b>Build Completed</b>%0A%0A📦 <b>File:</b> <code>$APK_NAME</code>%0A🔗 <b>Download:</b> $DOWNLOAD_URL" \
+          -d parse_mode="HTML"
 
       - name: Send Error Log on Failure
         if: failure()
         run: |
-          [ -f build_log.txt ] && tail -n 200 build_log.txt > error_log.txt || echo "Failed early." > error_log.txt
+          [ -f build_log.txt ] && tail -n 200 build_log.txt > error_log.txt || echo "Failed" > error_log.txt
           curl -F document=@"error_log.txt" \
           "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
           -F chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
-          -F caption="❌ *Build Failed on 1.0.1*" \
-          -F parse_mode="Markdown"
+          -F caption="❌ <b>Build Failed on 1.0.1</b>" \
+          -F parse_mode="HTML"
 
       - name: Purge Workspace
         if: always()
