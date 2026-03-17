@@ -26,7 +26,7 @@ jobs:
           echo "COMMIT_MSG=$(git log -1 --pretty=%B | head -n 1)" >> $GITHUB_ENV
           echo "START_TIME=$(date +%s)" >> $GITHUB_ENV
 
-      # 3. Send Trigger Notification (Cosmic Style)
+      # 3. Send Trigger Notification
       - name: Send Trigger Notification
         run: |
           TIME=$(date +"%a %b %d %I:%M:%S %p")
@@ -48,15 +48,20 @@ jobs:
       - name: Build APK
         run: ./gradlew assembleDebug --stacktrace 2>&1 | tee build_log.txt
 
-      # 6. Handle Success (Cosmic Style)
+      # 6. Handle Success (Upload to GoFile)
       - name: Handle Success
         if: success()
         run: |
           APK_PATH=$(find . -name "*.apk" | grep "debug" | head -n 1)
           APK_NAME=$(basename "$APK_PATH")
           
-          # Upload to transfer.sh for files > 50MB
-          DOWNLOAD_URL=$(curl --upload-file "$APK_PATH" "https://transfer.sh/$APK_NAME")
+          # GoFile API Flow: 1. Get Server -> 2. Upload
+          echo "🌐 Fetching GoFile server..."
+          SERVER=$(curl -s https://api.gofile.io/getServer | jq -r '.data.server')
+          
+          echo "📤 Uploading to $SERVER..."
+          UPLOAD_RESPONSE=$(curl -F "file=@$APK_PATH" "https://$SERVER.gofile.io/uploadFile")
+          DOWNLOAD_URL=$(echo $UPLOAD_RESPONSE | jq -r '.data.downloadPage')
           
           NOW=$(date +%s)
           DIFF=$(( NOW - ${{ env.START_TIME }} ))
