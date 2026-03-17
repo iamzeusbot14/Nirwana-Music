@@ -27,15 +27,15 @@ jobs:
           COMMIT_MSG=$(git log -1 --pretty=%B | head -n 1)
           TIME=$(date +"%a %b %d %I:%M:%S %p")
           
-          # We use HTML parsing mode for the cleanest "Code" font block
-          MESSAGE="<code>Build Triggered ⌛%0A"
-          MESSAGE+="App : Nirwana Music%0A"
-          MESSAGE+="Support : Android 14.0+%0A"
-          MESSAGE+="Variant : Debug Stable%0A"
-          MESSAGE+="Machine : Ubuntu 24.04.3 LTS%0A"
-          MESSAGE+="Cores : 4%0A"
-          MESSAGE+="Time : $TIME%0A"
-          MESSAGE+="Top Commit : $COMMIT_HASH $COMMIT_MSG</code>"
+          # We use HTML to specifically bold the headers and the first part of the values
+          MESSAGE="<b>Build Triggered ⌛</b>%0A"
+          MESSAGE+="<b>App : </b><code>Nirwana Music</code>%0A"
+          MESSAGE+="<b>Support : </b><code>Android 14.0+</code>%0A"
+          MESSAGE+="<b>Variant : </b><code>Debug Stable</code>%0A"
+          MESSAGE+="<b>Machine : </b><code>Ubuntu 24.04.3 LTS</code>%0A"
+          MESSAGE+="<b>Cores : </b><code>4</code>%0A"
+          MESSAGE+="<b>Time : </b><code>$TIME</code>%0A"
+          MESSAGE+="<b>Top Commit : </b><code>$COMMIT_HASH $COMMIT_MSG</code>"
 
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
           -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
@@ -56,7 +56,7 @@ jobs:
           APK_PATH=$(find . -name "*.apk" | grep "debug" | head -n 1)
           APK_NAME=$(basename "$APK_PATH")
           
-          # Uploading to transfer.sh to handle the 86MB file size
+          # Uploading to transfer.sh for large file support
           DOWNLOAD_URL=$(curl --upload-file "$APK_PATH" "https://transfer.sh/$APK_NAME")
           
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
