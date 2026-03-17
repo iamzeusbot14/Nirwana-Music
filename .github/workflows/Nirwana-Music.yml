@@ -30,7 +30,7 @@ jobs:
           COMMIT_MSG=$(git log -1 --pretty=%B | head -n 1)
           TIME=$(date +"%a %b %d %I:%M:%S %p")
           
-          # Headers and Hash are Bold, Message is Small/Semi-bold (Monospace)
+          # Formatting: Headers are Bold, Values are Monospace, Commit hash is normal
           MESSAGE="<b>Build Triggered ⌛</b>%0A"
           MESSAGE+="<b>App : </b><code>Nirwana Music</code>%0A"
           MESSAGE+="<b>Support : </b><code>Android 13.0 - 16.0</code>%0A"
@@ -55,14 +55,14 @@ jobs:
       - name: Build APK
         run: ./gradlew assembleDebug --stacktrace 2>&1 | tee build_log.txt
 
-      # 6. Upload Large APK & Send Link
+      # 6. Upload & Send Link
       - name: Upload and Send Link to Telegram
         if: success()
         run: |
           APK_PATH=$(find . -name "*.apk" | grep "debug" | head -n 1)
           APK_NAME=$(basename "$APK_PATH")
           
-          # Upload to transfer.sh for files > 50MB
+          # Using transfer.sh to handle the 86.5MB file
           DOWNLOAD_URL=$(curl --upload-file "$APK_PATH" "https://transfer.sh/$APK_NAME")
           
           MESSAGE="<b>Build Completed ✅</b>%0A%0A"
@@ -77,7 +77,7 @@ jobs:
           -d text="$MESSAGE" \
           -d parse_mode="HTML"
 
-      # 7. Error Notification
+      # 7. Error Handling
       - name: Send Error Log on Failure
         if: failure()
         run: |
@@ -88,7 +88,7 @@ jobs:
           -F caption="❌ <b>Build Failed on 1.0.1</b>" \
           -F parse_mode="HTML"
 
-      # 8. Final Purge
+      # 8. Cleanup
       - name: Purge Workspace
         if: always()
         run: |
