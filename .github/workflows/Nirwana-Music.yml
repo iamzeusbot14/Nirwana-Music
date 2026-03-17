@@ -7,66 +7,74 @@ on:
 
 jobs:
   build_and_cleanup:
-    name: Clone, Build, and Purge
+    name: Build and Deliver
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Environment Setup
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      # 2. Manual Clone using your REPO_ACCESS_TOKEN
       - name: Clone Nirwana-Music
         run: |
-          # We use the token in the URL to authenticate the private clone
           git clone --depth 1 --branch 1.0.1 https://${{ secrets.REPO_ACCESS_TOKEN }}@github.com/iamzeus14/Nirwana-Music.git .
-          echo "✅ Repository cloned successfully."
 
-      # 3. Handle Gradle Wrapper (Ensures gradlew exists)
+      # NEW: Build Triggered Notification
+      - name: Send Trigger Notification
+        run: |
+          COMMIT_HASH=$(git rev-parse --short HEAD)
+          COMMIT_MSG=$(git log -1 --pretty=%B | head -n 1)
+          TIME=$(date +"%a %b %d %I:%M:%S %p")
+          
+          MESSAGE="Build Triggered ⌛%0A"
+          MESSAGE+="App : Nirwana Music%0A"
+          MESSAGE+="Support : Android 14.0+%0A"
+          MESSAGE+="Variant : Debug Stable%0A"
+          MESSAGE+="Machine : Ubuntu 24.04 LTS%0A"
+          MESSAGE+="Cores : 4%0A"
+          MESSAGE+="Time : $TIME%0A"
+          MESSAGE+="Top Commit : $COMMIT_HASH $COMMIT_MSG"
+
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+          -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+          -d text="$MESSAGE"
+
       - name: Prepare Gradle
         run: |
-          if [ ! -f gradlew ]; then
-            echo "⚠️ gradlew not found. Generating..."
-            gradle wrapper
-          fi
+          if [ ! -f gradlew ]; then gradle wrapper; fi
           chmod +x gradlew
 
-      # 4. Build the Music App
       - name: Build APK
-        run: |
-          ./gradlew assembleDebug --stacktrace 2>&1 | tee build_log.txt
+        run: ./gradlew assembleDebug --stacktrace 2>&1 | tee build_log.txt
 
-      # 5. Send APK to Telegram
-      - name: Send APK to Telegram
+      - name: Upload and Send Link to Telegram
         if: success()
         run: |
-          # Locates the APK anywhere in the build outputs
           APK_PATH=$(find . -name "*.apk" | grep "debug" | head -n 1)
-          curl -F document=@"$APK_PATH" \
-          "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
-          -F chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
-          -F caption="🎵 *Nirwana Music: Build Ready!*%0A📌 *Branch:* 1.0.1%0A👤 *By:* Z E U S" \
-          -F parse_mode="Markdown"
+          APK_NAME=$(basename "$APK_PATH")
+          
+          # Upload to transfer.sh to bypass the 50MB Telegram limit
+          DOWNLOAD_URL=$(curl --upload-file "$APK_PATH" "https://transfer.sh/$APK_NAME")
+          
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+          -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+          -d text="✅ *Build Completed*%0A%0A📦 *File:* $APK_NAME%0A🔗 *Download:* $DOWNLOAD_URL" \
+          -d parse_mode="Markdown"
 
-      # 6. Send Error Log on Failure
-      - name: Send Error Log
+      - name: Send Error Log on Failure
         if: failure()
         run: |
-          [ -f build_log.txt ] && tail -n 200 build_log.txt > error_log.txt || echo "Clone or Build failed before logs were written." > error_log.txt
+          [ -f build_log.txt ] && tail -n 200 build_log.txt > error_log.txt || echo "Failed early." > error_log.txt
           curl -F document=@"error_log.txt" \
           "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
           -F chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
-          -F caption="❌ *Nirwana Music: Build Failed*%0ACheck the attached log for details." \
+          -F caption="❌ *Build Failed on 1.0.1*" \
           -F parse_mode="Markdown"
 
-      # 7. Final Purge (Zero Footprint)
       - name: Purge Workspace
         if: always()
         run: |
-          # Deletes everything including the hidden .git folder
           rm -rf ./*
           rm -rf .git
-          echo "✅ Runner workspace and artifacts completely purged."
