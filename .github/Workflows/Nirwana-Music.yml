@@ -1,0 +1,56 @@
+name: Nirwana Music CI/CD
+
+on:
+  push:
+    branches: [ "main", "master", "dev" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    name: Build and Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Grant Execute Permission
+        run: chmod +x gradlew
+
+      - name: Build with Gradle
+        # 'tee' saves the log to a file while still showing it in the console
+        # '2>&1' captures both standard output and error messages
+        run: ./gradlew assembleDebug --stacktrace 2>&1 | tee build_log.txt
+
+      - name: Send APK on Success
+        if: success()
+        run: |
+          # Locate the generated APK
+          APK_PATH=$(find app/build/outputs/apk/debug/ -name "*.apk" | head -n 1)
+          
+          curl -F document=@"$APK_PATH" \
+          "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
+          -F chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+          -F caption="🎵 *Nirwana Music: Build Successful!*%0A%0A📌 *Commit:* ${{ github.event.head_commit.message }}%0A👤 *Author:* ${{ github.actor }}" \
+          -F parse_mode="Markdown"
+
+      - name: Send Error Log on Failure
+        if: failure()
+        run: |
+          # Extracts the last 200 lines to keep the file relevant and lightweight
+          tail -n 200 build_log.txt > error_log.txt
+          
+          curl -F document=@"error_log.txt" \
+          "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
+          -F chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+          -F caption="❌ *Nirwana Music: Build Failed*%0A%0AThe compilation encountered an error. See the attached log for details." \
+          -F parse_mode="Markdown"
+          
