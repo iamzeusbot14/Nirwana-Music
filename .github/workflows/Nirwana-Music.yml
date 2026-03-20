@@ -24,7 +24,7 @@ jobs:
     - name: Send Build Trigger Message
       run: |
         CORES=$(nproc)
-        TIME=$(date)
+        TIME=$(TZ=Asia/Kolkata date +"%a %b %d %I:%M:%S %p")
 
         COMMIT_MSG_CLEAN=$(echo "${{ env.COMMIT_MSG }}" | cut -c1-80)
         [ ${#COMMIT_MSG_CLEAN} -ge 80 ] && COMMIT_MSG_CLEAN="$COMMIT_MSG_CLEAN..."
